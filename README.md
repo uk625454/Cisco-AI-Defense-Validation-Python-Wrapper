@@ -174,7 +174,7 @@ Create a local `.env` file in the same folder.
 Example:
 
 ```env
-AIDEF_API_KEY=YOUR_TENANT_MGMT_API_KEY
+AIDEF_API_KEY=<YOUR_TENANT_MGMT_API_KEY>
 AIDEF_BASE_URL=https://api.us.security.cisco.com
 AIDEF_TIMEOUT=60
 ```
