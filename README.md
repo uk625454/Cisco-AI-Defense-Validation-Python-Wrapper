@@ -1,478 +1,466 @@
-# Cisco-AI-Defense-Validation-Python-Wrapper
+# Cisco AI Defense Validation Python Wrapper
 
-## Overview
+## What this wrapper does
 
-This folder contains a Python-based wrapper that allows you to **start and monitor a Cisco AI Defense validation run** against an **EXTERNAL model endpoint** directly from **Visual Studio Code**.
+This Python wrapper lets a user start and monitor **Cisco AI Defense validation tests** against an **external model / agent / application endpoint** from a local terminal, without needing to manually build Management API requests each time.
 
-Instead of launching validation manually through the AI Defense dashboard UI, this wrapper enables you to:
+It supports:
 
-- start a validation scan programmatically
-- target an external application / agent / model endpoint
-- optionally include HTTP headers required by the endpoint
-- wait for the validation job to finish
-- retrieve:
-  - job status
-  - validation configuration
+- **Single-turn validation**
+- **Multi-turn validation**
+- **Multi-turn validation with custom goals**
+- **Interactive input** for:
+  - external API provider
+  - target endpoint URL
+  - headers
+  - model response path
+  - request body JSON template
+  - prompt bank
+- **Saved endpoint configuration files** so users can reuse endpoint settings later
+- **Custom goal management** for multi-turn runs:
+  - list existing goals
+  - delete selected goals or all goals before a run
+  - create new custom goals
+  - optionally delete all goals after the run
+- **Polling for completion** and printing:
+  - final job status
+  - validation config
   - validation results
 
-The wrapper interacts with the **Cisco AI Defense Management API**.
+## Files in this wrapper
 
----
+### `aidef_validation_client.py`
+This is the API client layer. It handles calls to the Cisco AI Defense Management API, including:
 
-# What This Folder Does
+- start single-turn validation
+- start multi-turn validation
+- create/list/delete custom goals
+- list jobs
+- fetch config
+- fetch results
+- wait for completion
 
-When you run the script, the following workflow occurs:
+### `run_validation.py`
+This is the interactive entrypoint users run. It:
 
-1. Load configuration from `.env`
-2. Authenticate with the **Cisco AI Defense Management API**
-3. Start a validation run using:
+- asks the user what kind of validation they want
+- collects endpoint details
+- optionally loads or saves reusable endpoint configs
+- manages custom goals for multi-turn runs
+- starts the validation
+- prints results
 
-POST /api/ai-defense/v1/ai-validation/start
+## What the user needs before running this wrapper
 
-4. Receive a `task_id`
-5. Poll validation jobs until the job completes
-6. Retrieve:
-   - validation job details
-   - validation configuration
-   - validation results
+Before running the script, the user needs all of the following:
 
-Everything is printed to the **VS Code terminal**.
+### 1. Python installed
+A working Python 3 installation is required.
 
----
+### 2. Cisco AI Defense tenant API key
+The wrapper talks to the Cisco AI Defense Management API, so the user must have a valid:
 
-# Files in This Folder
+- `AIDEF_API_KEY`(Instructions in Step 6 of 'Step-by-step setup' section)
 
-The folder should already contain the following files:
+### 3. Reachable target endpoint
+The external endpoint being validated must be reachable by Cisco AI Defense.
 
-aidef_validation_client.py  
-run_validation.py  
-requirements.txt  
-.env  
-README.md  
+Examples:
+- an OpenAI-compatible endpoint
+- an Anthropic-compatible endpoint
+- an Azure OpenAI endpoint
+- an internal agent or gateway endpoint that Cisco AI Defense can reach
 
-## aidef_validation_client.py
+### 4. Correct request body template
+The user must know the JSON request format that the target endpoint expects.
 
-This file contains the **API client** that communicates with Cisco AI Defense.
+The template **must include**:
 
-Responsibilities:
-
-- authenticate to the Management API
-- start validation runs
-- list validation jobs
-- retrieve validation configuration
-- retrieve validation results
-- poll until validation completes
-
-This file **usually does not need to be modified**.
-
----
-
-## run_validation.py
-
-This is the **script you execute**.
-
-Responsibilities:
-
-- load environment variables
-- configure validation parameters
-- define request body template
-- define response extraction path
-- optionally define endpoint headers
-- start the validation
-- print results
-
-This is the file where **customer-specific values are configured**.
-
----
-
-## .env
-
-This file stores environment variables such as:
-
-- Cisco AI Defense API key
-- Management API base URL
-- timeout values
-
----
-
-## requirements.txt
-
-Lists the Python packages required to run the wrapper.
-
----
-
-# Visual Studio Code Setup
-
-# Step 1 — Open the folder in VS Code
-
-Open Visual Studio Code.
-
-Click:
-
-File → Open Folder
-
-Select the folder that contains the files.
-
----
-
-# Step 2 — Open the VS Code Terminal
-
-### Method 1 — Keyboard shortcut
-
-Mac:
-
-Control + `
-
-Windows/Linux:
-
-Ctrl + `
-
----
-
-### Method 2 — Menu
-
-Click:
-
-Terminal → New Terminal
-
----
-
-### Method 3 — Command Palette
-
-Open the Command Palette:
-
-Mac:
-
-Cmd + Shift + P
-
-Windows/Linux:
-
-Ctrl + Shift + P
-
-Then type:
-
-Terminal: Create New Terminal
-
-Press **Enter**.
-
-When the terminal opens, it appears at the bottom of VS Code.
-
----
-
-# Step 3 — Confirm the Terminal is in the Project Folder
-
-Run:
-
-ls
-
-You should see:
-
-aidef_validation_client.py  
-run_validation.py  
-requirements.txt  
-.env  
-README.md  
-
----
-
-# Step 4 — Create a Python Virtual Environment
-
-Run:
-
-python -m venv .venv
-
-If your system requires python3:
-
-python3 -m venv .venv
-
----
-
-# Step 5 — Activate the Virtual Environment
-
-## macOS / Linux
-
-source .venv/bin/activate
-
-## Windows PowerShell
-
-.venv\Scripts\Activate.ps1
-
-## Windows Command Prompt
-
-.venv\Scripts\activate
-
-Your terminal prompt should now include:
-
-(.venv)
-
----
-
-# Step 6 — Install Dependencies
-
-Install required Python packages:
-
-pip install -r requirements.txt
-
-Contents of requirements.txt:
-
-requests  
-python-dotenv
-
----
-
-# Step 7 — Select the Python Interpreter in VS Code
-
-Open Command Palette:
-
-Cmd + Shift + P  
-or  
-Ctrl + Shift + P
-
-Search for:
-
-Python: Select Interpreter
-
-Select the interpreter inside:
-
-.venv
-
-Example:
-
-.venv/bin/python  
-or  
-.venv\Scripts\python.exe
-
----
-
-# Step 8 — Configure the `.env` File
-
-Open `.env` and update the values.
-
-IMPORTANT - Instructions on how to generate Management API Key - https://developer.cisco.com/docs/ai-defense-management/authentication/
-
-Example:
-
-AIDEF_API_KEY=<CUSTOMER_AI_DEFENSE__MGMT_API_KEY>  
-AIDEF_BASE_URL=https://api.us.security.cisco.com  
-AIDEF_TIMEOUT=60
-
-Update:
-
-- **AIDEF_API_KEY** → Customer Cisco AI Defense Management API key 
-
----
-
-# Step 9 — Configure `run_validation.py`
-
-This file contains the **customer-specific configuration**.
-
-## Replace Target Endpoint
-
-Find:
-
-target_endpoint=""
-
-Replace with the **target endpoint URL**.
-
-Example:
-
-target_endpoint="https://customer-ai-api.company.com/v1/chat/completions"
-
----
-
-## Configure Request Body Template
-
-Find:
-
-request_body_template = json.dumps(<Request Body Template>)
-
-Update to match the **API request body format**.
-
-Important rule:
-
+```text
 {{prompt}}
+```
 
-must appear where the **user input should go**.
+This is where Cisco AI Defense inserts the attack prompt during validation.
 
----
+### 5. Correct response path
+The user must know the JSON path where the model or agent response is returned.
 
-## Configure Response JSON Path
+Example:
 
-Find:
+```text
+choices.0.message.content
+```
 
-response_json_path = ""
+or:
 
-Update to match where the **model output appears in the response JSON**.
+```text
+structured_response.content
+```
+
+### 6. Headers if the endpoint requires them
+If the endpoint requires headers such as:
+
+- `Authorization`
+- `x-api-key`
+- session tokens
+- cookies
+- gateway headers
+
+the user must know those values before running the script.
+
+### 7. Fresh session-based credentials if applicable
+If the endpoint depends on browser session cookies or short-lived tokens, the user needs to be aware that these may expire quickly.
+
+That matters because the validation may fail even if a manual curl worked earlier, if the session has expired by the time Cisco AI Defense performs the pre-flight check.
+
+## Step-by-step setup
+
+### Step 1: Put the files in one folder
+
+The folder should contain at least:
+
+- `aidef_validation_client.py`
+- `run_validation.py`
+- `requirements.txt`
+- `.env` or `.env.example`
+
+### Step 2: Open a terminal in that folder
+
+Example:
+
+```bash
+cd /path/to/your/folder
+```
+
+### Step 3: Create a virtual environment
+
+This avoids package conflicts and avoids system Python installation issues.
+
+```bash
+python3 -m venv .venv
+```
+
+### Step 4: Activate the virtual environment
+
+macOS / Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+After activation, the terminal usually shows something like:
+
+```text
+(.venv)
+```
+
+### Step 5: Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+A typical `requirements.txt` should include:
+
+```text
+requests
+python-dotenv
+```
+
+### Step 6: Create the `.env` file
+
+Create a local `.env` file in the same folder.
+
+Example:
+
+```env
+AIDEF_API_KEY=YOUR_TENANT_MGMT_API_KEY
+AIDEF_BASE_URL=https://api.us.security.cisco.com
+AIDEF_TIMEOUT=60
+```
+Instructions to create AI Defense Management API Key: https://developer.cisco.com/docs/ai-defense-management/authentication/
+
+### Why this is needed
+
+- `AIDEF_API_KEY` authenticates to the Cisco AI Defense Management API
+- `AIDEF_BASE_URL` tells the wrapper which AI Defense API base URL to use
+- `AIDEF_TIMEOUT` controls request timeout behavior
+
+## How to run the wrapper
+
+From the project folder, with the virtual environment activated:
+
+```bash
+python run_validation.py
+```
+
+## What the script will ask the user
+
+The wrapper is interactive. It will guide the user through the configuration.
+
+### 1. Validation type
+
+The script first asks:
+
+- `Single-turn`
+- `Multi-turn`
+
+### 2. Validation test name
+
+The script asks for the overall test name. This is the name that appears in Cisco AI Defense for the validation run.
+
+### 3. Load saved endpoint configuration file (optional)
+
+If saved config files already exist in the local folder, the script can load one.
+
+This helps avoid retyping:
+
+- provider
+- target URL
+- headers
+- response path
+- request template
+
+If a saved config is loaded, the script can still ask whether the user wants to add more headers.
+
+### 4. External API provider
+
+The script asks the user to select a provider by number.
+
+Supported values:
+
+- `EXTERNAL_API_PROVIDER_UNSPECIFIED`
+- `EXTERNAL_API_PROVIDER_AZURE_OPENAI`
+- `EXTERNAL_API_PROVIDER_OPENAI`
+- `EXTERNAL_API_PROVIDER_ANTHROPIC`
+- `EXTERNAL_API_PROVIDER_GEMINI`
+
+### Important rule for multi-turn
+For **multi-turn validation**, `EXTERNAL_API_PROVIDER_UNSPECIFIED` is **not allowed**.
+
+The script will not let the user proceed with that value for multi-turn.
+
+### 5. Target endpoint URL
+
+The script asks for the full URL of the target model or agent endpoint.
+
+### 6. Headers
+
+The script asks whether the endpoint requires headers.
+
+If yes, it collects them one by one as:
+
+- header key
+- header value
+
+Then it asks whether the user has more headers to add.
+
+### 7. Path to model response
+
+The script asks for the response path where the model or agent output lives in the returned JSON.
+
+### 8. Request body JSON template
+
+The script asks the user to paste the full JSON request body template.
+
+The user pastes multiline JSON and finishes by typing:
+
+```text
+END
+```
+
+The template must include:
+
+```text
+{{prompt}}
+```
+
+### Why this is required
+Without `{{prompt}}`, Cisco AI Defense would have nowhere to insert the validation prompt.
+
+## Single-turn flow
+
+For single-turn runs, after endpoint parameters are collected, the script asks for the prompt bank.
+
+Prompt bank options:
+
+- `PROMPT_BANK_DEFAULT`
+- `PROMPT_BANK_QUICK_SCAN`
+
+Then, if the endpoint configuration was entered manually instead of loaded from file, the script asks whether the user wants to save it for future runs.
+
+Then it starts the validation.
+
+## Multi-turn flow
+
+For multi-turn runs, the script first enforces that the provider is valid for multi-turn.
+
+Then it asks whether the user wants to use custom goals.
+
+### If the user says **yes** to custom goals
+The script will:
+
+1. list existing custom goals
+2. ask whether the user wants to delete any existing custom goals before the test
+3. allow deletion by:
+   - goal numbers
+   - or `all`
+4. ask whether the user wants to create new custom goals
+5. optionally ask whether the user wants to delete all custom goals after the test
+
+In this custom-goal path, the script uses:
+
+```text
+PROMPT_BANK_DEFAULT
+```
+
+### If the user says **no** to custom goals
+The script asks the user to select a prompt bank:
+
+- `PROMPT_BANK_DEFAULT`
+- `PROMPT_BANK_QUICK_SCAN`
+
+Then, if the endpoint configuration was entered manually instead of loaded from file, the script asks whether the user wants to save it for future runs.
+
+Then it starts the validation.
+
+## Saved endpoint configuration files
+
+The wrapper can save endpoint settings into local JSON files.
+
+These saved files include:
+
+- config name
+- external API provider
+- target endpoint
+- model headers
+- response path
+- request body template
+
+### Why this helps
+
+It saves time for repeated testing against the same endpoint and avoids having to re-enter:
+
+- long URLs
+- many headers
+- complex request templates
+
+### How file naming works
+
+The script checks the local folder for existing saved config files and creates a new unique filename automatically.
 
 Examples:
 
-OpenAI-style:
+- `saved_endpoint_configs.json`
+- `saved_endpoint_configs_1.json`
+- `saved_endpoint_configs_2.json`
 
-"choices.0.message.content"
+### Why this matters
 
-Custom wrapper:
+This prevents the script from overwriting an older saved configuration file.
 
-"structured_response.content"
+## What the script prints after starting a validation
 
----
+After a validation starts, the script prints:
 
-## Configure Test Name
+- validation task ID
+- final job status
+- validation config
+- validation results
 
-Find:
+This helps the user confirm:
 
-test_name=""
+- what was actually submitted
+- whether the job completed
+- what findings were returned
 
-Example replacement:
+## Things the user should be aware of
 
-test_name="External Validation"
+### 1. Session-based headers may expire
+If the endpoint uses:
 
----
+- cookies
+- secure session tokens
+- short-lived gateway credentials
 
-## Configure Description
+then the validation may fail later even if a manual curl worked earlier.
 
-Find:
+This usually shows up as:
 
-description=""
+- `401 Unauthorized`
 
-Replace with:
+### Why
+Cisco AI Defense does its own pre-flight request and then the actual validation traffic. If the auth context is stale by then, the endpoint may reject the request.
 
-description="Customer validation run triggered via Python wrapper"
+### 2. Multi-turn validation requires a valid provider
+The wrapper now enforces this. For multi-turn validation, the user cannot proceed with:
 
----
+```text
+EXTERNAL_API_PROVIDER_UNSPECIFIED
+```
 
-# Optional: Configure Headers
+### Why
+The target service expects a known provider classification for multi-turn validation.
 
-The script includes this section:
+### 3. The request template must match the endpoint exactly
+The wrapper validates that the JSON is syntactically correct, but it does not know whether the schema is correct for the target endpoint.
 
-model_headers = []
+### Why this matters
+A valid JSON template can still fail if the endpoint expects a different structure.
 
-This means **no headers are sent to the model endpoint**.
+### 4. The response path must be correct
+If the response path is wrong, Cisco AI Defense may not be able to extract the model response correctly.
 
----
+### Why this matters
+That can cause pre-flight or validation issues, or produce empty results.
 
-# Example — Adding Headers
+### 5. Saved config files may contain sensitive data
+Saved endpoint config files may include:
 
-If the endpoint requires authentication headers:
+- auth headers
+- cookies
+- session tokens
+- internal URLs
 
-model_headers = [
-{"key": "Authorization", "value": "Bearer CUSTOMER_TOKEN"},
-{"key": "x-api-key", "value": "CUSTOMER_API_KEY"}
-]
+### Why this matters
+They should be treated as sensitive local files and should not be shared casually.
 
-If headers are required, they must be added here.
+## Error handling built into the wrapper
 
----
+The wrapper includes handling for:
 
-# Step 10 — Run the Script
+- missing environment variables
+- invalid timeout values
+- invalid JSON request templates
+- missing `{{prompt}}`
+- malformed saved config files
+- invalid saved header shapes
+- API errors returned by Cisco AI Defense
+- keyboard interrupt / manual cancellation
+- timeout while polling validation completion
 
-From the VS Code terminal run:
+### Why this matters
+Without these checks, users would get vague failures that are harder to debug.
 
-python run_validation.py
+## Recommended usage pattern
 
-or if required:
+A good workflow for a user is:
 
-python3 run_validation.py
-
----
-
-# Expected Output
-
-Example output:
-
-Started validation task: 123456789
-
-Final job status:
-{ ... }
-
-Validation config:
-{ ... }
-
-Validation results:
-{ ... }
-
-This confirms:
-
-- validation was started
-- the job completed
-- results were retrieved successfully
-
----
-
-# Customer Environment Checklist
-
-Before running validation ensure:
-
-- Cisco AI Defense Management API key is correct
-- Management API base URL is correct (https://api.security.cisco.com)
-- Endpoint URL is reachable
-- request body template matches endpoint format
-- response JSON path correctly extracts the application / agent / model output
-- headers are configured if required
-- OAuth settings added if endpoint requires them
-
----
-
-# Common Issues
-
-## 401 / 403 Errors
-
-Usually caused by:
-
-- incorrect API key
-- incorrect base URL
-- insufficient API permissions
-
----
-
-## 400 Bad Request
-
-Usually caused by:
-
-- incorrect request template
-- invalid enum values
-- malformed JSON body
-
----
-
-## Validation Tests Skipped
-
-Often caused by:
-
-- incorrect request template
-- incorrect response path
-- missing required headers
-
----
-
-# Recommended Best Practice
-
-Before running AI Defense validation, verify the endpoint manually using:
-
-- curl
-- Postman
-- a simple Python script
-
-Confirm:
-
-- endpoint accepts the request
-- response JSON is correct
-- model output exists at the specified response path
-
----
-
-# Summary
-
-This wrapper allows you to:
-
-- automate Cisco AI Defense validation
-- run tests directly from VS Code
-- support external model endpoints
-- optionally add authentication headers
-- retrieve results programmatically
-
-The two most important configuration values are:
-
-request_body_template  
-response_json_path
-
-If those are correct, validation should run successfully.
+1. validate the endpoint manually with curl first
+2. confirm the correct:
+   - headers
+   - request body
+   - response path
+3. run the wrapper
+4. save the endpoint config if it is likely to be reused
+5. refresh session headers if the endpoint uses short-lived auth
+
+## Final note
+
+This wrapper is best used as a **repeatable validation launcher** for Cisco AI Defense when testing external model or agent endpoints that may require:
+
+- custom request JSON
+- custom headers
+- provider-specific configuration
+- multi-turn testing
+- custom-goal workflows
