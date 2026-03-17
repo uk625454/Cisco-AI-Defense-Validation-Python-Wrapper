@@ -2,7 +2,7 @@
 
 ## What this wrapper does
 
-This Python wrapper automates the full lifecycle of Cisco AI Defense validation tests against model, agent, and application endpoints. The wrapper supports single-turn scans, multi-turn scans (with optional custom goals), and also enables multi-turn scans on external endpoints with custom API formats. 
+This Python wrapper automates the full lifecycle of Cisco AI Defense validation tests for model, agent, and application endpoints. The wrapper supports single-turn scans, multi-turn scans (with optional custom goals), and also enables multi-turn scans on external endpoints with custom API formats. 
 
 - **Core Capabilities**
   - Single-turn validation tests
