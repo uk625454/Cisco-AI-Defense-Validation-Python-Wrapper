@@ -10,8 +10,16 @@ from aidef_validation_client import AIDefenseValidationClient
 load_dotenv()
 
 
-EXTERNAL_API_PROVIDER_OPTIONS = {
+SINGLE_TURN_PROVIDER_OPTIONS = {
     1: "EXTERNAL_API_PROVIDER_UNSPECIFIED",
+    2: "EXTERNAL_API_PROVIDER_AZURE_OPENAI",
+    3: "EXTERNAL_API_PROVIDER_OPENAI",
+    4: "EXTERNAL_API_PROVIDER_ANTHROPIC",
+    5: "EXTERNAL_API_PROVIDER_GEMINI",
+}
+
+MULTI_TURN_PROVIDER_OPTIONS = {
+    1: "API_PROVIDER_CUSTOM",
     2: "EXTERNAL_API_PROVIDER_AZURE_OPENAI",
     3: "EXTERNAL_API_PROVIDER_OPENAI",
     4: "EXTERNAL_API_PROVIDER_ANTHROPIC",
@@ -25,6 +33,10 @@ PROMPT_BANK_OPTIONS = {
 
 SAVED_CONFIG_FILE_PREFIX = "saved_endpoint_configs"
 SAVED_CONFIG_FILE_EXTENSION = ".json"
+
+ADAPTER_FRONTEND_URL = "https://ny495f8n9a.execute-api.us-east-1.amazonaws.com/v1/chat/completions"
+ADAPTER_FRONTEND_RESPONSE_PATH = "choices.0.message.content"
+ADAPTER_BACKEND_PROVIDER = "EXTERNAL_API_PROVIDER_OPENAI"
 
 
 def prompt_non_empty(prompt_text: str) -> str:
@@ -73,28 +85,30 @@ def prompt_run_mode() -> str:
         print("Invalid selection. Please enter 1 or 2.")
 
 
-def prompt_external_api_provider(allow_unspecified: bool = True) -> str:
-    print("\nSelect external API provider:")
-    for number, provider in EXTERNAL_API_PROVIDER_OPTIONS.items():
-        print(f"{number}. {provider}")
-
-    if not allow_unspecified:
-        print(
-            "\nFor multi-turn validation, EXTERNAL_API_PROVIDER_UNSPECIFIED is not allowed."
-        )
+def prompt_external_api_provider(run_mode: str) -> str:
+    if run_mode == "multi":
+        options = MULTI_TURN_PROVIDER_OPTIONS
+        print("\nSelect external API provider:")
+        print("1. API_PROVIDER_CUSTOM")
+        print("2. EXTERNAL_API_PROVIDER_AZURE_OPENAI")
+        print("3. EXTERNAL_API_PROVIDER_OPENAI")
+        print("4. EXTERNAL_API_PROVIDER_ANTHROPIC")
+        print("5. EXTERNAL_API_PROVIDER_GEMINI")
+    else:
+        options = SINGLE_TURN_PROVIDER_OPTIONS
+        print("\nSelect external API provider:")
+        print("1. EXTERNAL_API_PROVIDER_UNSPECIFIED")
+        print("2. EXTERNAL_API_PROVIDER_AZURE_OPENAI")
+        print("3. EXTERNAL_API_PROVIDER_OPENAI")
+        print("4. EXTERNAL_API_PROVIDER_ANTHROPIC")
+        print("5. EXTERNAL_API_PROVIDER_GEMINI")
 
     while True:
         choice = input("Enter the number of the external API provider: ").strip()
         try:
             number = int(choice)
-            if number in EXTERNAL_API_PROVIDER_OPTIONS:
-                provider = EXTERNAL_API_PROVIDER_OPTIONS[number]
-                if not allow_unspecified and provider == "EXTERNAL_API_PROVIDER_UNSPECIFIED":
-                    print(
-                        "Please select a provider other than EXTERNAL_API_PROVIDER_UNSPECIFIED."
-                    )
-                    continue
-                return provider
+            if number in options:
+                return options[number]
         except ValueError:
             pass
 
@@ -118,18 +132,83 @@ def prompt_prompt_bank() -> str:
         print("Invalid selection. Please enter one of the listed numbers.")
 
 
-def prompt_headers() -> List[Dict[str, str]]:
+def prompt_multiline_json(prompt_text: str, required_placeholder: str) -> str:
+    print(prompt_text)
+    print("Paste JSON below. Type END on a new line when finished.\n")
+
+    lines: List[str] = []
+    while True:
+        line = input()
+        if line.strip() == "END":
+            break
+        lines.append(line)
+
+    raw_json = "\n".join(lines).strip()
+
+    if not raw_json:
+        raise ValueError("Request body template cannot be empty.")
+
+    if required_placeholder not in raw_json:
+        raise ValueError(
+            f"The request body template must include {required_placeholder}."
+        )
+
+    try:
+        parsed = json.loads(raw_json)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON provided: {exc}")
+
+    return json.dumps(parsed)
+
+
+def resolve_env_reference(value: str) -> str:
+    stripped = value.strip()
+    if not stripped.startswith("$"):
+        return value
+
+    env_name = stripped[1:].strip()
+    if not env_name:
+        raise ValueError("Environment variable reference cannot be just '$'.")
+
+    env_value = os.environ.get(env_name)
+    if env_value is None or not env_value.strip():
+        raise ValueError(
+            f"Environment variable '{env_name}' is not set or is empty."
+        )
+
+    return env_value
+
+
+def prompt_header_value() -> str:
+    while True:
+        print(
+            "Enter header value.\n"
+            "You can enter either:\n"
+            "- the literal value\n"
+            "- or an environment variable reference like $BEDROCK_BEARER_TOKEN"
+        )
+        value = input().rstrip("\n").rstrip("\r")
+        if not value.strip():
+            print("Header value cannot be empty. Please try again.")
+            continue
+
+        try:
+            resolved = resolve_env_reference(value)
+            return resolved
+        except ValueError as exc:
+            print(exc)
+
+
+def prompt_headers(prompt_text: str) -> List[Dict[str, str]]:
     headers: List[Dict[str, str]] = []
 
-    has_headers = prompt_yes_no(
-        "\nDoes the endpoint require headers? (yes/no): "
-    )
+    has_headers = prompt_yes_no(prompt_text)
     if not has_headers:
         return headers
 
     while True:
         key = prompt_non_empty("Enter header key: ")
-        value = prompt_non_empty("Enter header value: ")
+        value = prompt_header_value()
         headers.append({"key": key, "value": value})
 
         has_more = prompt_yes_no("Do you have another header to add? (yes/no): ")
@@ -150,7 +229,7 @@ def prompt_additional_headers(existing_headers: List[Dict[str, str]]) -> List[Di
 
     while True:
         key = prompt_non_empty("Enter additional header key: ")
-        value = prompt_non_empty("Enter additional header value: ")
+        value = prompt_header_value()
         updated_headers.append({"key": key, "value": value})
 
         has_more = prompt_yes_no("Do you have another additional header to add? (yes/no): ")
@@ -158,35 +237,6 @@ def prompt_additional_headers(existing_headers: List[Dict[str, str]]) -> List[Di
             break
 
     return updated_headers
-
-
-def prompt_multiline_json(prompt_text: str) -> str:
-    print(prompt_text)
-    print("Paste JSON below. Type END on a new line when finished.\n")
-
-    lines: List[str] = []
-    while True:
-        line = input()
-        if line.strip() == "END":
-            break
-        lines.append(line)
-
-    raw_json = "\n".join(lines).strip()
-
-    if not raw_json:
-        raise ValueError("Request body template cannot be empty.")
-
-    if "{{prompt}}" not in raw_json:
-        raise ValueError(
-            "The request body template must include {{prompt}} where the validation prompt should be inserted."
-        )
-
-    try:
-        parsed = json.loads(raw_json)
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON provided: {exc}")
-
-    return json.dumps(parsed)
 
 
 def normalize_custom_goals_response(raw_response: Any) -> List[Dict[str, Any]]:
@@ -407,7 +457,7 @@ def get_unique_config_filename() -> str:
         index += 1
 
 
-def validate_loaded_config(config: Dict[str, Any]) -> Dict[str, Any]:
+def validate_loaded_config(config: Dict[str, Any], run_mode: str) -> Dict[str, Any]:
     required_keys = [
         "name",
         "external_api_provider",
@@ -432,6 +482,11 @@ def validate_loaded_config(config: Dict[str, Any]) -> Dict[str, Any]:
     ):
         raise ValueError("Loaded config 'external_api_provider' must be a non-empty string.")
 
+    provider = config["external_api_provider"]
+
+    if run_mode == "single" and provider == "API_PROVIDER_CUSTOM":
+        raise ValueError("API_PROVIDER_CUSTOM can only be used for multi-turn runs.")
+
     if (
         not isinstance(config["target_endpoint"], str)
         or not config["target_endpoint"].strip()
@@ -450,9 +505,11 @@ def validate_loaded_config(config: Dict[str, Any]) -> Dict[str, Any]:
     ):
         raise ValueError("Loaded config 'request_body_template' must be a non-empty string.")
 
-    if "{{prompt}}" not in config["request_body_template"]:
+    required_placeholder = "{{true_template_prompt}}" if provider == "API_PROVIDER_CUSTOM" else "{{prompt}}"
+
+    if required_placeholder not in config["request_body_template"]:
         raise ValueError(
-            "Loaded config 'request_body_template' must include {{prompt}}."
+            f"Loaded config 'request_body_template' must include {required_placeholder}."
         )
 
     try:
@@ -470,6 +527,8 @@ def validate_loaded_config(config: Dict[str, Any]) -> Dict[str, Any]:
             raise ValueError("Each loaded header must contain 'key' and 'value'.")
         if not isinstance(header["key"], str) or not isinstance(header["value"], str):
             raise ValueError("Loaded header 'key' and 'value' must both be strings.")
+
+        resolve_env_reference(header["value"])
 
     return config
 
@@ -491,7 +550,7 @@ def load_saved_config_file(filename: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def prompt_load_saved_config() -> Optional[Dict[str, Any]]:
+def prompt_load_saved_config(run_mode: str) -> Optional[Dict[str, Any]]:
     config_files = discover_saved_config_files()
 
     if not config_files:
@@ -519,7 +578,7 @@ def prompt_load_saved_config() -> Optional[Dict[str, Any]]:
                     print(f"Could not load a valid config from {selected_file}.")
                     return None
 
-                validated = validate_loaded_config(config)
+                validated = validate_loaded_config(config, run_mode=run_mode)
                 print(f"\nLoaded saved configuration file: {selected_file}")
                 return validated
         except ValueError as exc:
@@ -566,24 +625,11 @@ def prompt_save_current_config(
     save_endpoint_config_file(config_data)
 
 
-def collect_endpoint_parameters(allow_unspecified_provider: bool) -> Dict[str, Any]:
-    saved_config = prompt_load_saved_config()
+def prompt_user_visible_endpoint_parameters(run_mode: str) -> Dict[str, Any]:
+    saved_config = prompt_load_saved_config(run_mode=run_mode)
 
     if saved_config is not None:
         external_api_provider = saved_config["external_api_provider"]
-
-        if (
-            not allow_unspecified_provider
-            and external_api_provider == "EXTERNAL_API_PROVIDER_UNSPECIFIED"
-        ):
-            print(
-                "\nThe loaded configuration uses EXTERNAL_API_PROVIDER_UNSPECIFIED, "
-                "which is not allowed for this multi-turn flow."
-            )
-            external_api_provider = prompt_external_api_provider(
-                allow_unspecified=False
-            )
-
         target_endpoint = saved_config["target_endpoint"]
         model_headers = saved_config["model_headers"]
         response_json_path = saved_config["response_json_path"]
@@ -593,7 +639,9 @@ def collect_endpoint_parameters(allow_unspecified_provider: bool) -> Dict[str, A
             model_headers = prompt_additional_headers(model_headers)
         else:
             print("\nThe loaded configuration has no headers.")
-            model_headers = prompt_headers()
+            model_headers = prompt_headers(
+                "\nDoes the endpoint require headers? (yes/no): "
+            )
 
         return {
             "external_api_provider": external_api_provider,
@@ -604,16 +652,25 @@ def collect_endpoint_parameters(allow_unspecified_provider: bool) -> Dict[str, A
             "loaded_from_saved_config": True,
         }
 
-    external_api_provider = prompt_external_api_provider(
-        allow_unspecified=allow_unspecified_provider
-    )
+    external_api_provider = prompt_external_api_provider(run_mode=run_mode)
     target_endpoint = prompt_non_empty("\nEnter target endpoint URL: ")
-    model_headers = prompt_headers()
-    response_json_path = prompt_non_empty("\nEnter path to model response: ")
-    request_body_template = prompt_multiline_json(
-        "\nEnter the request body JSON template.\n"
-        "Use {{prompt}} where the validation attack prompt should be inserted."
+    model_headers = prompt_headers(
+        "\nDoes the endpoint require headers? (yes/no): "
     )
+    response_json_path = prompt_non_empty("\nEnter path to model response: ")
+
+    if external_api_provider == "API_PROVIDER_CUSTOM":
+        request_body_template = prompt_multiline_json(
+            "\nEnter the request body JSON template.\n"
+            "Use {{true_template_prompt}} where the wrapper should place the validation prompt.",
+            required_placeholder="{{true_template_prompt}}",
+        )
+    else:
+        request_body_template = prompt_multiline_json(
+            "\nEnter the request body JSON template.\n"
+            "Use {{prompt}} where the validation prompt should be inserted.",
+            required_placeholder="{{prompt}}",
+        )
 
     return {
         "external_api_provider": external_api_provider,
@@ -622,6 +679,77 @@ def collect_endpoint_parameters(allow_unspecified_provider: bool) -> Dict[str, A
         "response_json_path": response_json_path,
         "request_body_template": request_body_template,
         "loaded_from_saved_config": False,
+    }
+
+
+def headers_list_to_dict(headers: List[Dict[str, str]]) -> Dict[str, str]:
+    result: Dict[str, str] = {}
+    for header in headers:
+        key = str(header.get("key", "")).strip()
+        raw_value = str(header.get("value", ""))
+        if key:
+            result[key] = resolve_env_reference(raw_value)
+    return result
+
+
+def headers_list_resolved(headers: List[Dict[str, str]]) -> List[Dict[str, str]]:
+    resolved: List[Dict[str, str]] = []
+    for header in headers:
+        key = str(header.get("key", "")).strip()
+        raw_value = str(header.get("value", ""))
+        if key:
+            resolved.append(
+                {
+                    "key": key,
+                    "value": resolve_env_reference(raw_value),
+                }
+            )
+    return resolved
+
+
+def build_execution_parameters(
+    user_provider: str,
+    user_target_endpoint: str,
+    user_model_headers: List[Dict[str, str]],
+    user_response_json_path: str,
+    user_request_body_template: str,
+) -> Dict[str, Any]:
+    if user_provider != "API_PROVIDER_CUSTOM":
+        return {
+            "external_api_provider": user_provider,
+            "target_endpoint": user_target_endpoint,
+            "model_headers": headers_list_resolved(user_model_headers),
+            "response_json_path": user_response_json_path,
+            "request_body_template": user_request_body_template,
+        }
+
+    try:
+        true_request_template = json.loads(user_request_body_template)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Saved request template is invalid JSON: {exc}") from exc
+
+    adapter_request_body = {
+        "model": "adapter-custom-endpoint",
+        "messages": [
+            {
+                "role": "user",
+                "content": "{{prompt}}",
+            }
+        ],
+        "adapter_config": {
+            "true_endpoint_url": user_target_endpoint,
+            "true_response_path": user_response_json_path,
+            "upstream_headers": headers_list_to_dict(user_model_headers),
+            "true_request_template": true_request_template,
+        },
+    }
+
+    return {
+        "external_api_provider": ADAPTER_BACKEND_PROVIDER,
+        "target_endpoint": ADAPTER_FRONTEND_URL,
+        "model_headers": [],
+        "response_json_path": ADAPTER_FRONTEND_RESPONSE_PATH,
+        "request_body_template": json.dumps(adapter_request_body),
     }
 
 
@@ -647,21 +775,28 @@ def main() -> None:
     run_mode = prompt_run_mode()
     test_name = prompt_non_empty("\nEnter validation test name: ")
 
-    if run_mode == "single":
-        endpoint_parameters = collect_endpoint_parameters(
-            allow_unspecified_provider=True
-        )
-    else:
-        endpoint_parameters = collect_endpoint_parameters(
-            allow_unspecified_provider=False
-        )
+    user_visible_parameters = prompt_user_visible_endpoint_parameters(run_mode=run_mode)
 
-    external_api_provider = endpoint_parameters["external_api_provider"]
-    target_endpoint = endpoint_parameters["target_endpoint"]
-    model_headers = endpoint_parameters["model_headers"]
-    response_json_path = endpoint_parameters["response_json_path"]
-    request_body_template = endpoint_parameters["request_body_template"]
-    loaded_from_saved_config = endpoint_parameters["loaded_from_saved_config"]
+    user_provider = user_visible_parameters["external_api_provider"]
+    user_target_endpoint = user_visible_parameters["target_endpoint"]
+    user_model_headers = user_visible_parameters["model_headers"]
+    user_response_json_path = user_visible_parameters["response_json_path"]
+    user_request_body_template = user_visible_parameters["request_body_template"]
+    loaded_from_saved_config = user_visible_parameters["loaded_from_saved_config"]
+
+    execution_parameters = build_execution_parameters(
+        user_provider=user_provider,
+        user_target_endpoint=user_target_endpoint,
+        user_model_headers=user_model_headers,
+        user_response_json_path=user_response_json_path,
+        user_request_body_template=user_request_body_template,
+    )
+
+    external_api_provider = execution_parameters["external_api_provider"]
+    target_endpoint = execution_parameters["target_endpoint"]
+    model_headers = execution_parameters["model_headers"]
+    response_json_path = execution_parameters["response_json_path"]
+    request_body_template = execution_parameters["request_body_template"]
 
     oauth_client_id: Optional[str] = None
     oauth_client_secret: Optional[str] = None
@@ -676,11 +811,11 @@ def main() -> None:
 
             if not loaded_from_saved_config:
                 prompt_save_current_config(
-                    external_api_provider=external_api_provider,
-                    target_endpoint=target_endpoint,
-                    model_headers=model_headers,
-                    response_json_path=response_json_path,
-                    request_body_template=request_body_template,
+                    external_api_provider=user_provider,
+                    target_endpoint=user_target_endpoint,
+                    model_headers=user_model_headers,
+                    response_json_path=user_response_json_path,
+                    request_body_template=user_request_body_template,
                 )
 
             print("\nStarting single-turn validation...")
@@ -727,11 +862,11 @@ def main() -> None:
 
             if not loaded_from_saved_config:
                 prompt_save_current_config(
-                    external_api_provider=external_api_provider,
-                    target_endpoint=target_endpoint,
-                    model_headers=model_headers,
-                    response_json_path=response_json_path,
-                    request_body_template=request_body_template,
+                    external_api_provider=user_provider,
+                    target_endpoint=user_target_endpoint,
+                    model_headers=user_model_headers,
+                    response_json_path=user_response_json_path,
+                    request_body_template=user_request_body_template,
                 )
 
             print("\nStarting multi-turn validation...")
