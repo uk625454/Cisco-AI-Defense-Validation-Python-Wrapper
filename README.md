@@ -2,30 +2,19 @@
 
 ## What this wrapper does
 
-This Python wrapper lets a user start and monitor **Cisco AI Defense validation tests** against an **external model / agent / application endpoint** from a local terminal, without needing to manually build Management API requests each time.
+This Python wrapper automates the full lifecycle of Cisco AI Defense validation tests against model, agent, and application endpoints. The wrapper supports single-turn scans, multi-turn scans (with optional custom goals), and also enables multi-turn scans on external endpoints with custom API formats. 
 
-It supports:
-
-- **Single-turn validation**
-- **Multi-turn validation**
-- **Multi-turn validation with custom goals**
-- **Interactive input** for:
-  - external API provider
-  - target endpoint URL
-  - headers
-  - model response path
-  - request body JSON template
-  - prompt bank
-- **Saved endpoint configuration files** so users can reuse endpoint settings later
-- **Custom goal management** for multi-turn runs:
-  - list existing goals
-  - delete selected goals or all goals before a run
-  - create new custom goals
-  - optionally delete all goals after the run
-- **Polling for completion** and printing:
-  - final job status
-  - validation config
-  - validation results
+- **Core Capabilities**
+  - Single-turn validation tests
+  - Multi-turn validation tests
+  - Multi-turn with custom goal testing
+  - Interactive CLI configuration
+  - Well-known API provider request / response format (OpenAI, Anthropic, Gemini, Mistral)
+  - Custom API provider request / response format
+  - Secure header injection
+  - Parameter persistence + reuse
+  - Prompt bank selection
+  - Automatic test lifecycle polling
 
 ## Files in this wrapper
 
@@ -74,10 +63,15 @@ Examples:
 ### 4. Correct request body template
 The user must know the JSON request format that the target endpoint expects.
 
-The template **must include**:
+If you select a well-know API provider (OpenAI, Anthropic, Gemini, Mistral) or unspecified, the template **must include**:
 
 ```text
 {{prompt}}
+```
+If you select custom for your API provider, the template **must include**:
+
+```text
+{{true_template_prompt}}
 ```
 
 This is where Cisco AI Defense inserts the attack prompt during validation.
@@ -177,8 +171,11 @@ Example:
 AIDEF_API_KEY=<YOUR_TENANT_MGMT_API_KEY>
 AIDEF_BASE_URL=https://api.us.security.cisco.com
 AIDEF_TIMEOUT=60
+BEDROCK_BEARER_TOKEN=<TOKEN>
 ```
 Instructions to create AI Defense Management API Key: https://developer.cisco.com/docs/ai-defense-management/authentication/
+
+**IMPORTANT:** Use environment variables for sensitive headers. You can reference the variable using '$' (ex. $BEDROCK_BEARER_TOKEN) when you are prompted for the header value for a specific header key. 
 
 ### Why this is needed
 
@@ -211,7 +208,7 @@ The script asks for the overall test name. This is the name that appears in Cisc
 
 ### 3. Load saved endpoint configuration file (optional)
 
-If saved config files already exist in the local folder, the script can load one.
+If saved config files already exist in the local folder, the script can load one. The first time you run the scrip there will be no config files to load. 
 
 This helps avoid retyping:
 
@@ -227,7 +224,7 @@ If a saved config is loaded, the script can still ask whether the user wants to 
 
 The script asks the user to select a provider by number.
 
-Supported values:
+Supported values for single-turn scans:
 
 - `EXTERNAL_API_PROVIDER_UNSPECIFIED`
 - `EXTERNAL_API_PROVIDER_AZURE_OPENAI`
@@ -235,14 +232,20 @@ Supported values:
 - `EXTERNAL_API_PROVIDER_ANTHROPIC`
 - `EXTERNAL_API_PROVIDER_GEMINI`
 
-### Important rule for multi-turn
-For **multi-turn validation**, `EXTERNAL_API_PROVIDER_UNSPECIFIED` is **not allowed**.
+Supported values for multi-turn scans:
 
-The script will not let the user proceed with that value for multi-turn.
+- `API_PROVIDER_CUSTOM`
+- `EXTERNAL_API_PROVIDER_AZURE_OPENAI`
+- `EXTERNAL_API_PROVIDER_OPENAI`
+- `EXTERNAL_API_PROVIDER_ANTHROPIC`
+- `EXTERNAL_API_PROVIDER_GEMINI`
+
+### Important rule for multi-turn
+If your endpoint API format is custom and does not align with any of the well-known provider formats presented, please select 'API_PROVIDER_CUSTOM'
 
 ### 5. Target endpoint URL
 
-The script asks for the full URL of the target model or agent endpoint.
+The script asks for the full URL of the target model, agent or application endpoint.
 
 ### 6. Headers
 
@@ -251,7 +254,7 @@ The script asks whether the endpoint requires headers.
 If yes, it collects them one by one as:
 
 - header key
-- header value
+- header value (can reference environment variable using '$' - eg. $BEDROCK_BEARER_TOKEN
 
 Then it asks whether the user has more headers to add.
 
@@ -268,15 +271,29 @@ The user pastes multiline JSON and finishes by typing:
 ```text
 END
 ```
+For single-turn scans: 
 
-The template must include:
+If a well-known API provider or unspecified is selected, the template must include:
+
+```text
+{{prompt}}
+```
+For multi-turn scans:
+
+If a well-known API provider is selected, the template must include:
 
 ```text
 {{prompt}}
 ```
 
+If API_PROVIDER_CUSTOM is selected, the template must include:
+
+```text
+{{true_template_prompt}}
+```
+
 ### Why this is required
-Without `{{prompt}}`, Cisco AI Defense would have nowhere to insert the validation prompt.
+Without `{{prompt}}` or `{{true_template_prompt}}`, Cisco AI Defense would have nowhere to insert the validation prompt.
 
 ## Single-turn flow
 
@@ -293,7 +310,7 @@ Then it starts the validation.
 
 ## Multi-turn flow
 
-For multi-turn runs, the script first enforces that the provider is valid for multi-turn.
+For multi-turn runs, a well-know provider or API_PROVIDER_CUSTOM must first be selected.
 
 Then it asks whether the user wants to use custom goals.
 
@@ -392,29 +409,19 @@ This usually shows up as:
 ### Why
 Cisco AI Defense does its own pre-flight request and then the actual validation traffic. If the auth context is stale by then, the endpoint may reject the request.
 
-### 2. Multi-turn validation requires a valid provider
-The wrapper now enforces this. For multi-turn validation, the user cannot proceed with:
-
-```text
-EXTERNAL_API_PROVIDER_UNSPECIFIED
-```
-
-### Why
-The target service expects a known provider classification for multi-turn validation.
-
-### 3. The request template must match the endpoint exactly
+### 2. The request template must match the endpoint exactly
 The wrapper validates that the JSON is syntactically correct, but it does not know whether the schema is correct for the target endpoint.
 
 ### Why this matters
 A valid JSON template can still fail if the endpoint expects a different structure.
 
-### 4. The response path must be correct
+### 3. The response path must be correct
 If the response path is wrong, Cisco AI Defense may not be able to extract the model response correctly.
 
 ### Why this matters
 That can cause pre-flight or validation issues, or produce empty results.
 
-### 5. Saved config files may contain sensitive data
+### 4. Saved config files may contain sensitive data
 Saved endpoint config files may include:
 
 - auth headers
@@ -457,7 +464,7 @@ A good workflow for a user is:
 
 ## Final note
 
-This wrapper is best used as a **repeatable validation launcher** for Cisco AI Defense when testing external model or agent endpoints that may require:
+This wrapper is best used as a **repeatable validation launcher** for Cisco AI Defense when testing external model, agent, or application endpoints that may require:
 
 - custom request JSON
 - custom headers
