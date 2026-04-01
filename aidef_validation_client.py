@@ -9,6 +9,22 @@ load_dotenv()
 
 
 class AIDefenseValidationClient:
+    """
+    Client for Cisco AI Defense Management API.
+
+    This class is intentionally REST-first so the caller can
+    see exactly which Management API endpoints are being used for each validation
+    workflow step.
+
+    Base URL pattern used by every method in this file:
+        {AIDEF_BASE_URL}/api/ai-defense/v1/<endpoint>
+
+    Authentication for every Management API call in this file:
+        x-cisco-ai-defense-tenant-api-key: <tenant_management_api_key>
+
+    See the README for a higher-level endpoint map.
+    """
+
     def __init__(
         self,
         api_key: str,
@@ -26,6 +42,9 @@ class AIDefenseValidationClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
+        # This session is used only for Cisco AI Defense Management API calls.
+        # It is NOT the target model endpoint session. AI Defense itself later
+        # calls the model / application endpoint using the validation config we submit.
         self.session = requests.Session()
         self.session.headers.update(
             {
@@ -36,6 +55,7 @@ class AIDefenseValidationClient:
         )
 
     def _url(self, path: str) -> str:
+        """Build a full Cisco AI Defense Management API URL for a relative endpoint path."""
         return f"{self.base_url}/api/ai-defense/v1/{path.lstrip('/')}"
 
     def create_custom_goal(
@@ -43,11 +63,31 @@ class AIDefenseValidationClient:
         name: str,
         goal: str,
     ) -> Dict[str, Any]:
+        """
+        Management API call used to create a reusable multi-turn custom goal.
+
+        HTTP method:
+            POST
+
+        Endpoint:
+            /ai-validation/custom-goals
+
+        Request format sent by this method:
+            {
+              "name": "Goal name shown in AI Defense",
+              "goal": "Natural-language goal description"
+            }
+
+        Why this exists:
+            Multi-turn validations can optionally use custom goals instead of only
+            the built-in prompt-bank-driven objectives.
+        """
         payload = {
             "name": name,
             "goal": goal,
         }
 
+        # AI Defense API call: create custom goal
         resp = self.session.post(
             self._url("ai-validation/custom-goals"),
             json=payload,
@@ -62,6 +102,20 @@ class AIDefenseValidationClient:
         return resp.json()
 
     def list_custom_goals(self) -> Dict[str, Any]:
+        """
+        Management API call used to retrieve existing custom goals.
+
+        HTTP method:
+            GET
+
+        Endpoint:
+            /ai-validation/custom-goals
+
+        Why this exists:
+            The interactive wrapper can show existing goals before the user decides
+            whether to reuse, delete, or create goals for a multi-turn run.
+        """
+        # AI Defense API call: list custom goals
         resp = self.session.get(
             self._url("ai-validation/custom-goals"),
             timeout=self.timeout,
@@ -75,6 +129,19 @@ class AIDefenseValidationClient:
         return resp.json()
 
     def delete_custom_goal(self, goal_id: str) -> None:
+        """
+        Management API call used to delete a custom goal.
+
+        HTTP method:
+            DELETE
+
+        Endpoint:
+            /ai-validation/custom-goals/{goal_id}
+
+        Why this exists:
+            The wrapper can clean up old goals before or after a multi-turn test.
+        """
+        # AI Defense API call: delete one custom goal by ID
         resp = self.session.delete(
             self._url(f"ai-validation/custom-goals/{goal_id}"),
             timeout=self.timeout,
@@ -104,6 +171,42 @@ class AIDefenseValidationClient:
         multi_turn_enabled: Optional[bool] = None,
         additional_config: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """
+        Management API call used to start a single-turn EXTERNAL validation run.
+
+        HTTP method:
+            POST
+
+        Endpoint:
+            /ai-validation/start
+
+        Minimum request format built by this method:
+            {
+              "asset_type": "EXTERNAL",
+              "validation_scan_name": "...",
+              "model_endpoint_url_model_id": "https://target-endpoint",
+              "model_request_template": "{...{{prompt}}...}",
+              "model_response_json_path": "choices.0.message.content",
+              "language": "LANGUAGE_EN",
+              "prompt_bank": "PROMPT_BANK_DEFAULT"
+            }
+
+        Optional fields added only when supplied:
+            headers
+            description
+            external_api_provider
+            connector_id
+            oauth_client_id
+            oauth_client_secret
+            oauth_token_url
+            oauth_scopes
+            multi_turn_enabled
+            additional_config
+
+        Why this exists:
+            This is the main API call that launches a one-shot / single-turn red-team
+            validation against an external model or application endpoint.
+        """
         payload: Dict[str, Any] = {
             "asset_type": "EXTERNAL",
             "validation_scan_name": test_name,
@@ -135,6 +238,7 @@ class AIDefenseValidationClient:
         if additional_config:
             payload["additional_config"] = additional_config
 
+        # AI Defense API call: start single-turn validation job
         resp = self.session.post(
             self._url("ai-validation/start"),
             json=payload,
@@ -168,6 +272,31 @@ class AIDefenseValidationClient:
         oauth_scopes: Optional[List[str]] = None,
         additional_config: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """
+        Management API call used to start a multi-turn EXTERNAL validation run.
+
+        HTTP method:
+            POST
+
+        Endpoint:
+            /ai-validation/start/multi
+
+        Minimum request format built by this method:
+            {
+              "asset_type": "EXTERNAL",
+              "validation_scan_name": "...",
+              "model_endpoint_url_model_id": "https://target-endpoint",
+              "model_request_template": "{...}",
+              "model_response_json_path": "...",
+              "language": "LANGUAGE_EN",
+              "prompt_bank": "PROMPT_BANK_DEFAULT",
+              "use_custom_goals": false
+            }
+
+        Why this exists:
+            Multi-turn testing probes the endpoint across a conversation instead of
+            only isolated prompts. This is the entry point for that workflow.
+        """
         payload: Dict[str, Any] = {
             "asset_type": "EXTERNAL",
             "validation_scan_name": test_name,
@@ -198,6 +327,7 @@ class AIDefenseValidationClient:
         if additional_config:
             payload["additional_config"] = additional_config
 
+        # AI Defense API call: start multi-turn validation job
         resp = self.session.post(
             self._url("ai-validation/start/multi"),
             json=payload,
@@ -220,6 +350,27 @@ class AIDefenseValidationClient:
         asset_type: Optional[str] = None,
         search_string: Optional[str] = None,
     ) -> Dict[str, Any]:
+        """
+        Management API call used to list validation jobs.
+
+        HTTP method:
+            GET
+
+        Endpoint:
+            /ai-validation/jobs
+
+        Query parameters this method can send:
+            limit
+            offset
+            status
+            asset_type
+            search_string
+
+        Why this exists:
+            The wrapper uses this as its polling source of truth. Instead of assuming
+            the job is complete after start, it repeatedly checks the job list until
+            the target task_id reaches a terminal state.
+        """
         params: Dict[str, Any] = {
             "limit": limit,
             "offset": offset,
@@ -231,6 +382,7 @@ class AIDefenseValidationClient:
         if search_string:
             params["search_string"] = search_string
 
+        # AI Defense API call: list validation jobs (used directly and for polling)
         resp = self.session.get(
             self._url("ai-validation/jobs"),
             params=params,
@@ -245,6 +397,20 @@ class AIDefenseValidationClient:
         return resp.json()
 
     def get_results(self, task_id: str) -> Dict[str, Any]:
+        """
+        Management API call used to retrieve validation results for one task.
+
+        HTTP method:
+            GET
+
+        Endpoint:
+            /ai-validation/results/{task_id}
+
+        Why this exists:
+            After a job completes, the wrapper uses this endpoint to fetch the final
+            findings and attack-level output for that validation run.
+        """
+        # AI Defense API call: fetch validation results for one task ID
         resp = self.session.get(
             self._url(f"ai-validation/results/{task_id}"),
             timeout=self.timeout,
@@ -258,6 +424,20 @@ class AIDefenseValidationClient:
         return resp.json()
 
     def get_config(self, task_id: str) -> Dict[str, Any]:
+        """
+        Management API call used to retrieve the stored validation config for one task.
+
+        HTTP method:
+            GET
+
+        Endpoint:
+            /ai-validation/config/{task_id}
+
+        Why this exists:
+            This lets the user see exactly what AI Defense stored for the run,
+            including endpoint URL, template, provider settings, and other config.
+        """
+        # AI Defense API call: fetch stored validation configuration for one task ID
         resp = self.session.get(
             self._url(f"ai-validation/config/{task_id}"),
             timeout=self.timeout,
@@ -276,6 +456,22 @@ class AIDefenseValidationClient:
         poll_interval_seconds: int = 20,
         timeout_seconds: int = 7200,
     ) -> Dict[str, Any]:
+        """
+        Polling helper built on top of list_jobs().
+
+        Important: this method does not call a special "wait" endpoint in AI Defense.
+        Instead, it repeatedly calls:
+            GET /ai-validation/jobs
+
+        Then it scans the returned jobs list for the specific task_id and stops when
+        the job reaches a terminal status.
+
+        Terminal statuses currently checked here:
+            JOB_COMPLETED
+            JOB_FAILED
+            JOB_CANCELLED
+            JOB_ABORTED
+        """
         if poll_interval_seconds <= 0:
             raise ValueError("poll_interval_seconds must be greater than 0.")
         if timeout_seconds <= 0:
@@ -291,6 +487,7 @@ class AIDefenseValidationClient:
         }
 
         while True:
+            # AI Defense API call reused for polling job state
             jobs = self.list_jobs(limit=100, offset=0)
             matching_job = None
 
