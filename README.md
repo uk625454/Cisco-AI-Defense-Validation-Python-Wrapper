@@ -6,8 +6,8 @@ This Python wrapper automates the full lifecycle of Cisco AI Defense validation 
 
 - **Core Capabilities**
   - Single-turn validation tests
-  - Multi-turn validation tests (test includes attacks from the single-turn prompt bank + adaptive multi-turn attacks)
-  - Multi-turn with custom goal testing (test only includes attacks derived from custom goal(s)) 
+  - Multi-turn validation tests (test includes the single-turn prompt bank + adaptive multi-turn)
+  - Multi-turn with custom goal testing (test includes the single-turn prompt bank + adaptive multi-turn + attacks derived from custom goal(s)) 
   - Interactive CLI configuration
   - Well-known API provider request / response format (OpenAI, Anthropic, Gemini, Mistral)
   - Custom API provider request / response format
