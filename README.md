@@ -20,7 +20,9 @@ This Python wrapper automates the full lifecycle of Cisco AI Defense validation 
 
 This wrapper talks to the **Cisco AI Defense Management API** over HTTPS and authenticates every request with the tenant management API key in the `x-cisco-ai-defense-tenant-api-key` header. 
 
-Instructions to generate management API key: https://developer.cisco.com/docs/ai-defense-management/authentication/
+**Management API Reference for Validation:** https://developer.cisco.com/docs/ai-defense-management/get-ai-validation-config/
+
+**Instructions to generate management API key:** https://developer.cisco.com/docs/ai-defense-management/authentication/
 
 The base pattern is:
 
