@@ -15,6 +15,161 @@ This Python wrapper automates the full lifecycle of Cisco AI Defense validation 
   - Parameter persistence + reuse
   - Prompt bank selection
   - Automatic test lifecycle polling
+ 
+## AI Defense API calls used by this wrapper
+
+This wrapper talks to the **Cisco AI Defense Management API** over HTTPS and authenticates every request with the tenant management API key in the `x-cisco-ai-defense-tenant-api-key` header. 
+
+Instructions to generate management API key: https://developer.cisco.com/docs/ai-defense-management/authentication/
+
+The base pattern is:
+
+```text
+https://<regional-base-url>/api/ai-defense/v1/<endpoint>
+```
+
+In this wrapper, the API client layer is `aidef_validation_client.py`, and that file makes the following Management API calls:
+
+### 1. Start a single-turn validation
+
+**Method:** `POST`  
+**Endpoint:** `/ai-validation/start`
+
+**Why the wrapper uses it:**
+This launches a single-turn validation run against an external endpoint.
+
+**Request format used by the wrapper:**
+
+```json
+{
+  "asset_type": "EXTERNAL",
+  "validation_scan_name": "My validation run",
+  "model_endpoint_url_model_id": "https://target-endpoint.example.com",
+  "model_request_template": "{...}",
+  "model_response_json_path": "choices.0.message.content",
+  "language": "LANGUAGE_EN",
+  "prompt_bank": "PROMPT_BANK_DEFAULT"
+}
+```
+
+**Optional fields the wrapper may also include:**
+
+```json
+{
+  "headers": [{"key": "Authorization", "value": "Bearer ..."}],
+  "description": "Optional description",
+  "external_api_provider": "EXTERNAL_API_PROVIDER_OPENAI",
+  "connector_id": "...",
+  "oauth_client_id": "...",
+  "oauth_client_secret": "...",
+  "oauth_token_url": "...",
+  "oauth_scopes": ["..."],
+  "multi_turn_enabled": false,
+  "additional_config": "..."
+}
+```
+
+### 2. Start a multi-turn validation
+
+**Method:** `POST`  
+**Endpoint:** `/ai-validation/start/multi`
+
+**Why the wrapper uses it:**
+This launches a conversational multi-turn validation run. The wrapper uses this when the user selects multi-turn mode.
+
+**Request format used by the wrapper:**
+
+```json
+{
+  "asset_type": "EXTERNAL",
+  "validation_scan_name": "My multi-turn validation run",
+  "model_endpoint_url_model_id": "https://target-endpoint.example.com",
+  "model_request_template": "{...}",
+  "model_response_json_path": "choices.0.message.content",
+  "language": "LANGUAGE_EN",
+  "prompt_bank": "PROMPT_BANK_DEFAULT",
+  "use_custom_goals": false
+}
+```
+
+### 3. Create a custom goal
+
+**Method:** `POST`  
+**Endpoint:** `/ai-validation/custom-goals`
+
+**Why the wrapper uses it:**
+For multi-turn testing, the wrapper can create user-defined goals that tell AI Defense what behavior to try to elicit.
+
+**Request format used by the wrapper:**
+
+```json
+{
+  "name": "Goal display name",
+  "goal": "Natural-language goal description"
+}
+```
+
+### 4. List custom goals
+
+**Method:** `GET`  
+**Endpoint:** `/ai-validation/custom-goals`
+
+**Why the wrapper uses it:**
+Before a multi-turn run, the wrapper can show the user existing goals so they can decide whether to reuse or delete them.
+
+### 5. Delete a custom goal
+
+**Method:** `DELETE`  
+**Endpoint:** `/ai-validation/custom-goals/{goal_id}`
+
+**Why the wrapper uses it:**
+The wrapper can clean up existing custom goals before or after a run.
+
+### 6. List validation jobs
+
+**Method:** `GET`  
+**Endpoint:** `/ai-validation/jobs`
+
+**Why the wrapper uses it:**
+This is the wrapper's polling source of truth. After starting a validation, the wrapper repeatedly calls this endpoint and looks for the matching `task_id` until the job reaches a terminal status.
+
+**Query parameters the wrapper may send:**
+
+```text
+limit
+offset
+status
+asset_type
+search_string
+```
+
+### 7. Get validation config for a task
+
+**Method:** `GET`  
+**Endpoint:** `/ai-validation/config/{task_id}`
+
+**Why the wrapper uses it:**
+After a run starts or completes, the wrapper can fetch the stored config so the user can verify exactly what AI Defense accepted and saved for that task.
+
+### 8. Get validation results for a task
+
+**Method:** `GET`  
+**Endpoint:** `/ai-validation/results/{task_id}`
+
+**Why the wrapper uses it:**
+After the validation reaches a terminal state, the wrapper calls this endpoint to retrieve the final findings for the run.
+
+### How these API calls map to the wrapper flow
+
+The wrapper lifecycle is:
+
+1. Collect endpoint, request template, response path, headers, provider, and validation type from the user.
+2. Call either `POST /ai-validation/start` or `POST /ai-validation/start/multi`.
+3. Read the returned `task_id`.
+4. Poll `GET /ai-validation/jobs` until the task reaches a terminal state.
+5. Call `GET /ai-validation/config/{task_id}` to show what was submitted.
+6. Call `GET /ai-validation/results/{task_id}` to retrieve the results.
+7. If the user is doing a custom-goal workflow, also call the custom-goal endpoints before or after the run.
 
 ## Files in this wrapper
 
